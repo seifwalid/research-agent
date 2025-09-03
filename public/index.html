@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Apollo Organization Search (Natural Language)</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, "Apple Color Emoji", "Segoe UI Emoji"; margin: 0; padding: 0; }
+      header { padding: 16px; border-bottom: 1px solid #ccc; }
+      main { max-width: 960px; margin: 0 auto; padding: 16px; }
+      textarea { width: 100%; min-height: 120px; padding: 12px; font-size: 14px; }
+      .controls { display: flex; gap: 12px; align-items: center; margin: 12px 0; }
+      .controls input { width: 80px; padding: 6px; }
+      button { padding: 10px 16px; font-weight: 600; cursor: pointer; }
+      .row { display: flex; gap: 16px; }
+      .col { flex: 1; }
+      pre { background: rgba(0,0,0,0.06); padding: 12px; overflow: auto; }
+      .result-card { border: 1px solid #d0d0d0; padding: 12px; border-radius: 6px; margin-bottom: 12px; }
+      .muted { opacity: 0.7; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <main>
+        <h2>Apollo Organization Search</h2>
+        <div class="muted">Powered by Gemini for NL → query. Requires server-side API keys.</div>
+      </main>
+    </header>
+    <main>
+      <label for="prompt"><strong>Describe the companies you want to find</strong></label>
+      <textarea id="prompt" placeholder="e.g., Find Series B fintech companies in London with 50—200 employees"></textarea>
+
+      <div class="controls">
+        <label>Page <input id="page" type="number" value="1" min="1" max="500"/></label>
+        <label>Per Page <input id="per_page" type="number" value="25" min="1" max="100"/></label>
+        <button id="searchBtn">Search</button>
+      </div>
+
+      <div class="row">
+        <div class="col">
+          <h3>Results</h3>
+          <div id="results"></div>
+        </div>
+        <div class="col">
+          <h3>Request Payload</h3>
+          <pre id="payload"></pre>
+        </div>
+      </div>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+  </html>
