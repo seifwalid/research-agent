@@ -206,7 +206,9 @@ async function doSearch() {
       return;
     }
     
-    document.getElementById('payload').textContent = JSON.stringify(data.request || {}, null, 2);
+    // Display the Apollo payload that was actually sent to Apollo API
+    const apolloPayload = data.request?.apollo_payload || {};
+    document.getElementById('payload').textContent = JSON.stringify(apolloPayload, null, 2);
     
     // Always group by employee ranges
     const groups = Array.isArray(data.groups) ? data.groups : [];

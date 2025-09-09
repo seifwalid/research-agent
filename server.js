@@ -43,6 +43,7 @@ function extractKeywords(input) {
     .join(' ');
 }
 
+
 // Helper: attempt to parse JSON from LLM text output
 function parseJsonFromText(text) {
   if (!text) return null;
@@ -82,52 +83,63 @@ async function generateApolloPayloadFromNL(naturalLanguageQuery, page, perPage) 
   const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
 
   const systemInstruction = [
-    'You convert natural language company search requests into a JSON payload for Apollo Organization Search API (POST https://api.apollo.io/api/v1/mixed_companies/search).',
-    'Only output raw JSON. No code fences. No commentary.',
-    'Use a conservative subset of fields that are widely supported:',
-    '- page: number (1..500)',
-    '- per_page: number (1..100)',
-    '- sort_by: string (e.g., "organization_name.keyword" or "employees" or "revenue")',
-    '- sort_order: string ("asc" | "desc")',
-    '- query: object with optional keys (include only when you are confident):',
-    '  - q_organization_name: string keywords for name/keyword search',
-    '  - locations: array of strings (e.g., ["London, United Kingdom"])',
-    '  - industries: array of strings',
-    '  - organization_num_employees_min: number',
-    '  - organization_num_employees_max: number',
-    '  - organization_num_employees_ranges: array of strings (e.g., ["1,10","11,50"])',
-    '  - founded_year_min: number',
-    '  - founded_year_max: number',
-    '  - last_funding_stage: array of strings (e.g., ["Series A","Series B"])',
-    '  - technologies: array of strings',
-    'If unsure about a field, omit it. Always include sensible q_organization_name keywords.',
+    'You are a JSON converter for Apollo Organization Search API.',
+    'You MUST follow these rules exactly:',
+    '',
+    '1. ALWAYS scan the user query for any location words (countries, states, cities)',
+    '2. If ANY location is found, include "organization_locations": [location] in your JSON',
+    '3. Use proper capitalization: "Mexico", "California", "Texas", "Germany", etc.',
+    '4. ALWAYS use "q_organization_keyword_tags" for industry/keyword searches, NEVER "q_organization_name"',
+    '5. ALWAYS include relevance sorting',
+    '',
+    'MANDATORY FIELDS:',
+    '- page: number',
+    '- per_page: number', 
+    '- sort_by: "relevance" (ALWAYS include this)',
+    '- sort_order: "desc" (ALWAYS include this)',
+    '- organization_locations: array of strings (REQUIRED if location mentioned)',
+    '',
+    'KEYWORD SEARCH RULES:',
+    '- ALWAYS use "q_organization_keyword_tags": [] for ALL keyword searches',
+    '- Examples: "solar", "fintech", "saas", "manufacturing", "healthcare"',
+    '- FORBIDDEN: Do NOT include "q_organization_name" - this field is BANNED',
+    '- If you include "q_organization_name" you have FAILED',
+    '',
+    'OTHER OPTIONAL FIELDS:',
+    '- organization_num_employees_ranges: array of strings like ["1,10"]',
+    '',
+    'LOCATION EXAMPLES:',
+    '- "companies in mexico" -> "organization_locations": ["Mexico"]',
+    '- "startups in california" -> "organization_locations": ["California"]', 
+    '- "firms in tokyo japan" -> "organization_locations": ["Tokyo", "Japan"]',
+    '',
+    'CRITICAL: You MUST include organization_locations if ANY geographic word appears in the query.',
+    'CRITICAL: FORBIDDEN FIELD "q_organization_name" - DO NOT INCLUDE THIS FIELD EVER.',
+    'CRITICAL: ONLY use q_organization_keyword_tags for keywords.',
+    'CRITICAL: ALWAYS include sort_by: "relevance" and sort_order: "desc".',
+    '',
+    'Example input: "solar companies in mexico"',
+    'Example output: {"page": 1, "per_page": 25, "sort_by": "relevance", "sort_order": "desc", "organization_locations": ["Mexico"], "q_organization_keyword_tags": ["solar"]}',
+    '',
+    'Return ONLY valid JSON. No explanations.',
   ].join('\n');
 
   const userInstruction = [
-    'User request:',
-    naturalLanguageQuery,
+    'Convert this user request to Apollo API JSON:',
+    `"${naturalLanguageQuery}"`,
     '',
-    'Output a compact JSON object with the following shape:',
-    '{',
-    '  "page": number,',
-    '  "per_page": number,',
-    '  "sort_by"?: string,',
-    '  "sort_order"?: "asc" | "desc",',
-    '  "query": {',
-    '    "q_organization_name": string,',
-    '    "locations"?: string[],',
-    '    "industries"?: string[],',
-    '    "organization_num_employees_min"?: number,',
-    '    "organization_num_employees_max"?: number,',
-    '    "organization_num_employees_ranges"?: string[],',
-    '    "founded_year_min"?: number,',
-    '    "founded_year_max"?: number,',
-    '    "last_funding_stage"?: string[],',
-    '    "technologies"?: string[]',
-    '  }',
-    '}',
+    'STEP 1: Extract keywords and put them in "q_organization_keyword_tags" array',
+    'STEP 2: Find locations and put them in "organization_locations" array', 
+    'STEP 3: Add sort_by: "relevance" and sort_order: "desc"',
+    'STEP 4: Add other fields as needed',
     '',
-    'Return ONLY the JSON.'
+    'REMEMBER:',
+    '- Use "q_organization_keyword_tags" for ALL keywords like "solar", "fintech", "saas"',
+    '- BANNED FIELD: "q_organization_name" must NOT appear in your JSON response',
+    '- ALWAYS include sort_by: "relevance" and sort_order: "desc"',
+    '- SUCCESS = JSON without "q_organization_name", FAILURE = JSON with "q_organization_name"',
+    '',
+    'Output only JSON:'
   ].join('\n');
 
   const result = await model.generateContent({
@@ -155,20 +167,32 @@ async function generateApolloPayloadFromNL(naturalLanguageQuery, page, perPage) 
   if (parsed.sort_by) payload.sort_by = parsed.sort_by;
   if (parsed.sort_order) payload.sort_order = parsed.sort_order;
 
-  // Apollo typically expects filters either at root or inside a query/criteria object.
-  // We will send both: keep inside query, and also spread safe, known keys to root as a fallback.
-  const query = parsed.query && typeof parsed.query === 'object' ? parsed.query : {};
-  if (!query.q_organization_name) {
-    query.q_organization_name = extractKeywords(naturalLanguageQuery) || naturalLanguageQuery;
+  // Force remove q_organization_name if Gemini stubbornly includes it
+  if ('q_organization_name' in parsed) {
+    delete parsed.q_organization_name;
   }
-  payload.query = query;
 
-  // Also mirror a few keys at root as a compatibility fallback
-  if (query.q_organization_name) payload.q_organization_name = query.q_organization_name;
-  if (Array.isArray(query.locations)) payload.locations = query.locations;
-  if (Array.isArray(query.industries)) payload.industries = query.industries;
-  if (typeof query.organization_num_employees_min === 'number') payload.organization_num_employees_min = query.organization_num_employees_min;
-  if (typeof query.organization_num_employees_max === 'number') payload.organization_num_employees_max = query.organization_num_employees_max;
+  // Apply parsed fields directly to the payload (Apollo API expects them at root level)
+  // Skip q_organization_name completely - we only want keyword tags
+
+  // Apply all other fields from parsed response
+  if (Array.isArray(parsed.organization_locations)) {
+    payload.organization_locations = parsed.organization_locations;
+  }
+  if (Array.isArray(parsed.organization_num_employees_ranges)) {
+    payload.organization_num_employees_ranges = parsed.organization_num_employees_ranges;
+  }
+  if (Array.isArray(parsed.q_organization_keyword_tags)) {
+    payload.q_organization_keyword_tags = parsed.q_organization_keyword_tags;
+  }
+  if (parsed.revenue_range) {
+    if (typeof parsed.revenue_range.min === 'number') {
+      payload['revenue_range[min]'] = parsed.revenue_range.min;
+    }
+    if (typeof parsed.revenue_range.max === 'number') {
+      payload['revenue_range[max]'] = parsed.revenue_range.max;
+    }
+  }
 
   return payload;
 }
@@ -397,7 +421,17 @@ app.all('/api/search_by_ranges', async (req, res) => {
     }
     await Promise.all(Array.from({ length: Math.min(concurrency, normalized.length) }, () => worker()));
 
-    return res.json({ request: { prompt, ranges: normalized, page: safePage, per_page: safePerPage, fetch_all }, groups: results });
+    return res.json({ 
+      request: { 
+        prompt, 
+        ranges: normalized, 
+        page: safePage, 
+        per_page: safePerPage, 
+        fetch_all,
+        apollo_payload: base  // Add the generated Apollo payload here
+      }, 
+      groups: results 
+    });
   } catch (error) {
     console.error('[search_by_ranges] error', error?.response?.data || error);
     return res.status(500).json({ error: 'Internal error', details: String(error.message || error) });
