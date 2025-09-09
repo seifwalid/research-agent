@@ -98,6 +98,10 @@ function renderOrgCard(org) {
     ['organization', 'headquarters_location'],
     ['organization', 'country']
   ]) || '';
+  const logo_url = getFirstByPaths(org, [
+    ['logo_url'],
+    ['organization', 'logo_url']
+  ]) || '';
   const employees = (function getEmployeesDisplay(o) {
     const primary = getFirstByPaths(o, [
       ['num_employees'],
@@ -133,7 +137,8 @@ function renderOrgCard(org) {
   })(org);
   const li = document.createElement('div');
   li.className = 'result-card';
-  li.innerHTML = `<div><strong>${name}</strong></div>
+  const logoImg = logo_url ? `<img src="${logo_url}" alt="${name} logo" style="width: 32px; height: 32px; object-fit: contain; margin-right: 10px; vertical-align: middle; border-radius: 4px;">` : '';
+  li.innerHTML = `<div style="display: flex; align-items: center;">${logoImg}<strong>${name}</strong></div>
     <div class="muted">${domain}${domain && location ? ' · ' : ''}${location}${employees ? ' · Employees: ' + employees : ''}</div>`;
   return li;
 }
